@@ -1,0 +1,6 @@
+# File: docs/requirements.txt
+
+sphinx==5.0
+obstools_ipgp==0.1
+sphinx_rtd_theme
+# readthedocs-sphinx-search==0.1.0rc3

@@ -1,0 +1,44 @@
+---
+    input:
+        SDS_dir: 'SDS_example'
+        inv_file: 'inv_example.station.xml'
+        description: "Tests on BBOBS07"
+    output:
+        show: True
+        filebase: 'BB07tests'
+    plot_globals:
+        time_series:
+            select: {station: "BB07"}
+        spectra:
+            select: {station: "BB07"}
+            window_length.s: 1024
+    plots:
+        time_series:
+            -
+                description: "Entire time series"
+                start_time: null
+                end_time: null
+            -
+                description: "Quiet time"
+                start_time: "2012-10-05T02:00:00"
+                end_time: "2012-10-05T03:05:00"
+            -
+                description: "Fake stack time"
+                start_time: "2012-10-05T05:12:00"
+                end_time: "2012-10-05T05:21:00"
+        spectra:
+            -
+                description: "Quiet time"
+                start_time: "2012-10-05T02:00:00"
+                end_time: "2012-10-05T03:05:00"
+        stack:
+            -
+                description: "Fake stack, no tests were run"
+                orientation_codes: ["Z"]
+                offset_before.s: 1
+                offset_after.s: 5
+                times: 
+                    - "2012-10-05T05:12:10"
+                    - "2012-10-05T05:13:50"
+                    - "2012-10-05T05:17:55"
+                    - "2012-10-05T05:20:25"

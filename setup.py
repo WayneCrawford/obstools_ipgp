@@ -4,24 +4,20 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 version = {}
-with open("lcheapo/version.py") as fp:
+with open("obstools_ipgp/version.py") as fp:
     exec(fp.read(), version)
 
 setuptools.setup(
-    name="lcheapo",
+    name="obstools_ipgp",
     version=version['__version__'],
     author="Wayne Crawford",
     author_email="crawford@ipgp.fr",
-    description="LCHEAPO data routines",
+    description="Ocean bottom seismometer evaluation/processing routines",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/WayneCrawford/lcheapo",
+    url="https://github.com/WayneCrawford/obstools_ipgp",
     packages=setuptools.find_packages(),
     include_package_data=True,
-    # packages=['lcheapo'],
-    # package_dir={'lcheapo': 'lcheapo'},
-    # package_data={'lcheapo': ['data/*.xml', 'data/*.json',
-    #                                 '_examples/*.py', '_examples/*.yaml']},
     install_requires=[
           'obspy>=1.1',
           'pyyaml>5.0',
@@ -32,18 +28,8 @@ setuptools.setup(
       ],
     entry_points={
          'console_scripts': [
-             'sdpcat=lcheapo.sdpchain:sdpcat',
-             'sdpstep=lcheapo.sdpchain:sdpstep',
-             'lcfix=lcheapo.lcfix:main',
-             'lcdump=lcheapo.lcdump:main',
-             'lccut=lcheapo.lccut:main',
-             'lcinfo=lcheapo.lcinfo:main',
-             'lcheader=lcheapo.lcheader:main',
-             'lcplot=lcheapo.lcplot:main',
-             'lc2SDS_weak=lcheapo.lc2SDS:lc2SDS',
-             'lc2ms_weak=lcheapo.lc2ms:lc2ms',
-             'lctest=lcheapo.lctest:main',
-             'lc_examples=lcheapo.lcputexamples:main'
+             'plotPSDs=obstools_ipgp.plotPSDs:main',
+             'obstest=obstools_ipgp.obstest:main'
          ]
     },
     python_requires='>=3.8',
@@ -55,7 +41,7 @@ setuptools.setup(
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Natural Language :: English",
         "Operating System :: OS Independent",
-        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.8",
         "Topic :: Scientific/Engineering",
         "Topic :: Scientific/Engineering :: Physics"
     ),
