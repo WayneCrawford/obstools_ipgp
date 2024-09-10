@@ -2,8 +2,11 @@
 import scipy.signal as ssig
 """
 Various noise models:
-- Peterson (low and high)
-- Pressure (low and high, hand picked from Brown et al., 2014)start_date
+- Sismo (low and high).  My version (S_low and S_high) is Peterson et al.
+  down to 0.1 s (Hz), Wolin and McNamara above XX Hz 
+- Pressure (low and high) hand picked from Brown et al., 2014 out to 10 s,
+  Webb 1998 for longer periods
+- SHOULD ADD 
 - 2-pole high-pass filters corresponding to geophone and hydrophone cutoffs
 """
 import numpy as np
@@ -45,8 +48,11 @@ HPAB = [[0.10,    -108.73,   -17.23],
         [354.80,  -206.66,    31.63],
         [100000,  -206.66,    31.63]]
 
+# Seismo signal levels
 #        Period    Level
-P_low = [[0.10,    -168],
+S_low = [[0.01,    -140],
+         [0.05,    -150],
+         [0.10,    -168],
          [0.17,    -166.7],
          [0.40,    -166.7],
          [0.80,    -169.2],
@@ -69,7 +75,10 @@ P_low = [[0.10,    -168],
          [10000.0, -151.9],
          [100000,  -103.1]]
 
-P_high = [[0.10,     -91.5],
+S_high = [[0.01,     -90],
+          [0.03,     -90],
+          [0.06,     -88],
+          [0.10,     -91.5],
           [0.22,     -97.4],
           [0.32,    -110.5],
           [0.80,    -120.0],
@@ -83,8 +92,9 @@ P_high = [[0.10,     -91.5],
           [100000,   -48.5]]
 
 
-# The following values are re uPa^2/Hz, I use Pa^2/Hz
-B_high = [[0.01,      82],
+# Pressure signal levels, from Brown et al. 2014 (<=10 s) and Webb 1998 (>10 s)
+#        Period    PSD (re uPa^2/Hz)
+P_high = [[0.01,      82],
           [0.02,      89],
           [0.05,      95],
           [0.10,      95],
@@ -94,12 +104,12 @@ B_high = [[0.01,      82],
           [2.0,      127],
           [5.0,      154],
           [10.0,     140],
-          [20.0,     140],
-          [50.0,     140],
-          [100.0,    140],
-          [100000,   140]]
+          [20.0,     150],
+          [50.0,     165],
+          [100.0,    170],
+          [1000,     180]]
 
-B_low = [[0.01,     64],
+P_low = [[0.01,     64],
          [0.02,     72.5],
          [0.05,     71],
          [0.10,     71],
@@ -109,16 +119,17 @@ B_low = [[0.01,     64],
          [2.0,     113],
          [5.0,     130],
          [7.0,     111],
-         [10.0,    111],
-         [20.0,    111],
-         [50.0,    111],
-         [100.0,   111],
-         [100000,  111]]
+         [10.0,    114],
+         [20.0,     90],
+         [50.0,    100],
+         [100.0,   130],
+         [1000,    150]]
 
 
 def PetersonNoiseModel(periods, as_freqs=False):
     """
-    Return Peterson low and high seismological noise models
+    Return Peterson low and high seismological noise models, extended by
+    Wolin and McNamara from >10 to 100 Hz
 
     Args:
         periods (list): periods to use (should be increasing)
@@ -128,19 +139,20 @@ def PetersonNoiseModel(periods, as_freqs=False):
             low_noise (list)
             high_noise (list)
     """
-    return _from_NoiseModel(P_low, P_high, periods, as_freqs)
+    return _from_NoiseModel(S_low, S_high, periods, as_freqs)
 
 
-def BrownNoiseModel(periods, as_freqs=False):
+def PressureNoiseModel(periods, as_freqs=False):
     """
-    Return Brown low and high presure noise models in dB ref to 1 Pa^2/Hz
+    Return Brown low and high presure noise models in dB ref to 1 Pa^2/Hz,
+    extended by Webb 1998 for periods > 10s
 
     Args:
         periods (list): periods to use (should be increasing)
         as_freqs (bool): interpret "periods" as frequencies instead
     """
-    return _from_NoiseModel([[x[0], x[1]-120] for x in B_low],
-                            [[x[0], x[1]-120] for x in B_high],
+    return _from_NoiseModel([[x[0], x[1]-120] for x in P_low],
+                            [[x[0], x[1]-120] for x in P_high],
                             periods, as_freqs)
 
 

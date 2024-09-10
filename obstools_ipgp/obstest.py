@@ -7,6 +7,61 @@ Plots:
     - stacks of time series from one station/channel
     - spectra from  multiple stations/channels
     - particle_motions between two channels
+
+
+There are 4 sections in each obstest.yaml file:
+
+- ``input``: input data parameters
+    - ``SDS_dir``: The directory containing the data (Seiscomp Data Structure
+                   format)
+    - ``inv_file``: The file containg the station inventory (StationXML format)
+    - ``description``: A text description of these tests
+- ``output``: output plot file parameters
+    - ``show``: show the plots?  If False, just save them to files
+    - ``filebase``: start of each output filename (may include directory)
+- ``plots``: the plots to make
+    - ``time_series``: a list of waveform plots to make, each item contains:
+        - ``description``: plot title
+        - ``select``: an optional dict of parameters used to select a subset of
+                      the waveforms (see obspy.core.stream.Stream.select())
+        - ``start_time``: plot start time
+        - ``end_time``: plot end time
+
+    - ``spectra``: list of spectra plots to make, each item contains:
+        - ``description``: plot title
+        - ``start_time``: data start time
+        - ``end_time``: data end time
+        - ``select`` (optional): as in ``time_series``
+        - ``overlay``(optional): overlay spectra on one plot? (True)
+    - ``stack``: a list of stacked waveform plots to make.
+               Useful when you performed a test action (tap, lift, jump, etc)
+               several times.
+               Each item contains:
+        - ``description``: plot title
+        - ``components``: a list of orientation codes to plot (one plot
+                                 for each orientation code)
+        - ``times``: list of times to plot at (each one "yyyy-mm-ddTHH:MM:SS")
+        - ``offset_before.s``: start plot this many seconds before each `time`
+        - ``offset_after.s``: end plot this many seconds after each ``time``
+    - ``particle_motion``: a list of particle motion plots to make.
+                           Use to evaluate the orientation and polarity of
+                           the channels.
+                           Each item contains:
+        - ``description``**: as in ``time_series``
+        - ``component_x``: component to plot on the x axis
+        - ``component_y``: component code to plot on the y axis
+        - ``times``: as in ``stack```
+        - ``particle_offset_before.s``: start particle motion plot this many
+                                        seconds before each ``time``
+        - ``particle_offset_after.s``: end particle motion plot this many
+                                       seconds after each ``time``
+        - ``offset_before.s``: start time series plot this many seconds before
+                               each ``time``
+        - ``offset_after.s``: end time series plot this many seconds after
+                              each ``time``
+
+``plot_globals`` [optional]: Default values for each type of plot.
+                             Same parameters as for ``plots``
 """
 import numpy as np
 import yaml
@@ -16,6 +71,7 @@ import argparse
 import pkg_resources
 import os
 import json
+import shutil
 from pathlib import Path, PurePath
 from urllib.parse import unquote
 
@@ -33,6 +89,17 @@ def main():
     Read the yaml file and plot the specified tests
     """
     args = get_arguments()
+    if args.examples == True:
+        print('Copying example files to current directory:')
+        example_files =  Path(__file__).parent.joinpath("_examples")
+        dest = Path('.').resolve()
+        for x in Path(example_files).iterdir():
+            if x.is_file() and x.suffix == ".yaml":
+                print(f"\t{x.name}")
+                shutil.copyfile(x, dest / x.name)
+        return
+    if args.yaml_file is None:
+        raise ValueError('must specify -i or --examples')
     root = read_obstest_yaml(args.yaml_file)
     plot_globals = get_plot_globals(root)
     show = root['output']['show']
@@ -96,7 +163,8 @@ def plot_spect(inputs, plot_info, filebase, show):
     kwargs = plot_info.get('select', {})
     stream = _read_inputs(inputs, plot_info.get('start_time'),
                           plot_info.get('end_time'), **kwargs)
-    if stream is None:
+    if stream is None or len(stream)==0:
+        print(f'{stream=}')
         return
     # Calculate spectra
     kwargs = {'inv': inputs['inv']}
@@ -130,7 +198,8 @@ def plot_time_series(inputs, plot_info, filebase, show, verbose=False):
     kwargs = plot_info.get('select', {})
     stream = _read_inputs(inputs, plot_info.get('start_time'),
                           plot_info.get('end_time'), **kwargs)
-    if stream is None:
+    if stream is None or len(stream)==0:
+        print(f'{stream=}')
         return
     if verbose:
         print(stream)
@@ -144,10 +213,11 @@ def plot_time_series(inputs, plot_info, filebase, show, verbose=False):
     if filebase:
         outfile = _make_plot_filename(filebase, plot_info.get('select', None),
                                       'ts', title)
-        stream.plot(size=(800, 600), fig=fig, outfile=outfile)
+        stream.plot(size=(800, 600), equal_scale=False, fig=fig, outfile=outfile)
     if show:
-        stream.plot(size=(800, 600), fig=fig)
+        stream.plot(size=(800, 600), equal_scale=False, fig=fig)
         plt.show()
+    plt.close(fig)
 
 
 def plot_stack(trace, plot_info, filebase, show):
@@ -187,8 +257,9 @@ def plot_stack(trace, plot_info, filebase, show):
     for time, c in zip(times, colors):
         offset_vertical += max_val
         t = trace.slice(time - offset_before, time + offset_after)
+        t.detrend('linear')
         ax.plot(t.times("utcdatetime") - time,
-                t.data - offset_vertical, color=c,
+                t.data, color=c,
                 label=time.strftime('%H:%M:%S') +
                 '.{:02d}'.format(int(time.microsecond / 1e4)))
         offset_vertical += max_val
@@ -201,6 +272,7 @@ def plot_stack(trace, plot_info, filebase, show):
         plt.savefig(outfile)
     if show:
         plt.show()
+    plt.close(fig)
 
 
 def plot_particle_motion(tracex, tracey, plot_info, filebase, show):
@@ -248,6 +320,8 @@ def plot_particle_motion(tracex, tracey, plot_info, filebase, show):
         # partical motion plot
         tx = tracex.slice(time - offset_before, time + offset_after)
         ty = tracey.slice(time - offset_before, time + offset_after)
+        tx.detrend('linear')
+        ty.detrend('linear')
         axxy.plot(tx.data, ty.data)
         axxy.axvline(0)
         axxy.axhline(0)
@@ -261,6 +335,7 @@ def plot_particle_motion(tracex, tracey, plot_info, filebase, show):
         plt.savefig(outfile)
     if show:
         plt.show()
+    plt.close(fig)
 
 
 def _stream_component(stream, component):
@@ -326,6 +401,9 @@ def _read_inputs(inputs, start_time_str, end_time_str, verbose=False,
         print("Reading from SDS directory")
     stream = inputs['client'].get_waveforms(
         network, station, location, channel, starttime, endtime, merge=0)
+    if stream is None or len(stream)==0:
+        print(f'{stream=}')
+        return None
     return stream
 
 
@@ -357,6 +435,7 @@ def _make_plot_filename(filebase, selectargs, plot_type, type_info,
 def _plot_one_ts(ax, trace, comp, time, offset_before_pm, offset_after_pm,
                  offset_before, offset_after):
     t = trace.slice(time - offset_before, time + offset_after)
+    t.detrend('linear')
     ax.plot(t.times("utcdatetime") - time, t.data)
     ax.axvline(-offset_before_pm, color='k', linestyle='--')
     ax.axvline(offset_after_pm, color='k', linestyle='--')
@@ -440,7 +519,10 @@ def get_arguments():
     p = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('yaml_file', help='YAML parameter file')
+    group = p.add_mutually_exclusive_group()
+    group.add_argument('-i', dest='yaml_file', help='YAML parameter file')
+    group.add_argument('--examples', default=False, action='store_true',
+                   help='put examples files in current directory')
     p.add_argument("-v", "--verbose", default=False, action='store_true',
                    help="verbose")
     return p.parse_args()

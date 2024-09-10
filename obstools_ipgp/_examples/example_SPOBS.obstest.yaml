@@ -1,0 +1,70 @@
+---
+    input:
+        SDS_dir: 'SDS'
+        inv_file: 'SDS.station.xml'
+        description: "Example of single SPOBS evaluation (differences from BBOBS in spectra window length and channel names)"
+    output:
+        show: False
+        filebase: 'obstest_plots_SPOBS/tests'
+    plot_globals:
+        spectra:
+            window_length.s: 1024
+        particle_motion:
+            component_x: "2"
+            component_y: "1"
+            particle_offset_before.s: 0
+            particle_offset_after.s: 0.5
+            offset_before.s: 0.5
+            offset_after.s: 2
+        stack:
+            offset_before.s: 1
+            offset_after.s: 2
+    plots:
+        time_series:
+            -
+                description: "Entire time series"
+                start_time: "2024-09-10T07:30:00"
+                end_time: "2024-09-10T11:00:00"
+            -
+                description: "Quiet time"
+                start_time: "2024-09-10T08:20:00"
+                end_time: "2024-09-10T10:11:00"
+            -
+                description: "Taps"
+                select: {station: "SP07"}
+                start_time: "2024-09-10T07:49:00"
+                end_time: "2024-09-10T08:11:00"
+        spectra:
+            -
+                description: "Quiet time"
+                start_time: "2024-09-10T08:20:00"
+                end_time: "2024-09-10T10:11:00"
+        stack:
+            -
+                description: "DPG hand stack"
+                select: {station: "SP07"}
+                components: ["H"]
+                offset_before.s: 5
+                offset_after.s: 115
+                times: 
+                    - "2024-09-10T07:50:00"
+                    - "2024-09-10T07:52:00"
+                    - "2024-09-10T07:54:00"
+            -
+                description: "Z taps"
+                select: {station: "SP07"}
+                components: ["3"]
+                times: 
+                    - "2024-09-10T08:07:59.75"
+                    - "2024-09-10T08:09:03"
+                    - "2024-09-10T08:10:00.6"
+        particle_motion:
+            -
+                description: "Z taps"
+                select: {station: "SP07"}
+                component_x: "2"
+                component_y: "3"
+                times: 
+                    - "2024-09-10T08:07:59.75"
+                    - "2024-09-10T08:09:03"
+                    - "2024-09-10T08:10:00.6"

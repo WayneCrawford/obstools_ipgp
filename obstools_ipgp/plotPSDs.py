@@ -8,7 +8,7 @@ from obspy.core.inventory import read_inventory
 from obspy.signal.spectral_estimation import PPSD
 from matplotlib import pyplot as plt
 
-from .noise_models import PetersonNoiseModel, BrownNoiseModel, two_pole_HP
+from .noise_models import PetersonNoiseModel, PressureNoiseModel, two_pole_HP
 
 MED_PSD_DIR = 'plot_medPSDs'
 PPSD_DIR = 'plot_PPSDs'
@@ -216,7 +216,7 @@ def _plot_compare_channel(periods, psds, channel, path):
     ax.legend(fontsize='xx-small', loc='best')
     ax.set_xlabel('Period(s)')
     if channel[-1] in ('H', 'G', 'O'):
-        ln, hn = BrownNoiseModel(periods)
+        ln, hn = PressureNoiseModel(periods)
         ax.semilogx(periods, ln, '--')
         ax.semilogx(periods, hn, '--')
         ax.set_ylabel('Power Spectral Density (dB ref 1 Pa/sqrt(Hz))')
