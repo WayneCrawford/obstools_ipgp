@@ -1,5 +1,5 @@
 include ToDo.rst
 graft obstools_ipgp/data
-graft obstools_ipgp/examples
+graft obstools_ipgp/_examples
 graft README_images
 
