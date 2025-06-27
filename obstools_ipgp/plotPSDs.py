@@ -1,7 +1,8 @@
 import math
 from pathlib import Path
 import re
-from argparse import ArgumentParser
+import argparse
+import sys
 
 from obspy.clients.filesystem.sds import Client
 from obspy.core.inventory import read_inventory
@@ -14,7 +15,7 @@ MED_PSD_DIR = 'plot_medPSDs'
 PPSD_DIR = 'plot_PPSDs'
 
 
-def main():
+def main(save_ppsds=True, plot_spectrograms=True):
 
     args = _parse_input()
 
@@ -26,24 +27,36 @@ def main():
     inv_nslcs = _inv_get_nslc(inv, args)  # list of 4-tuples, too
     shared_nslcs = _get_shared_nslcs(client_nslcs, inv_nslcs)
 
+    if len(shared_nslcs)== 0:
+        print('there are no shared seed_ids between the data and the inventory. Quitting...')
+        return
+
     psds = {}
     Path(PPSD_DIR).mkdir(exist_ok=True)
+    print('CALCULATING PPSDS')
     for nslc in shared_nslcs:
-        ppsd = _makePPSD(client, inv, nslc, args)
+        ppsd, datestr = _makePPSD(client, inv, nslc, args)
         if ppsd is None:
             continue
-        _plot_ppsd(ppsd, nslc, PPSD_DIR)
+        ppsd.plot(filename=f'{PPSD_DIR}/{nslc}_{datestr}_PPSD.png')
+        if save_ppsds is True:
+            ppsd.save_npz(f'{PPSD_DIR}/{nslc}_{datestr}_PPSD.npz')
+        if plot_spectrograms is True:
+            ppsd.plot_spectrogram(clim=[ppsd.db_bin_edges[0], ppsd.db_bin_edges[-1]],
+                                  filename=f'{PPSD_DIR}/{nslc}_{datestr}_spectrogram.png')
         periods, psds[nslc] = ppsd.get_mode()
 
     unique_channels = list(set([x.split('.')[3] for x in shared_nslcs]))
     Path(MED_PSD_DIR).mkdir(exist_ok=True)
+    print('CALCULATING median PSDS')
     for channel in unique_channels:
         _plot_compare_channel(periods, psds, channel, MED_PSD_DIR)
 
 
 def _parse_input():
-    parser = ArgumentParser(
-        prog='SDS_PPSDs',
+    parser = argparse.ArgumentParser(
+        prog='plotPSDs',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Calculates and compares Power Spectral Densities for an '
                     'SDS database and StationXML inventory')
     parser.add_argument('sds_dir', help='Path of SDS directory')
@@ -58,6 +71,8 @@ def _parse_input():
     parser.add_argument('-c', '--channels', default='*',
                         help='only channels matching the string '
                              '("*" and "?" wildcards accepted)')
+    parser.add_argument('-v', '--verbose', default=False, action='store_true',
+                        help='verbose')
     return parser.parse_args()
 
 
@@ -71,7 +86,7 @@ def _get_shared_nslcs(client_nslcs, inv_nslcs, verbose=True):
     client_only = []
     inv_only = []
 
-    nslcs = list(inv_nslcs + client_nslcs)  # all unique nslcs
+    nslcs = list(set(inv_nslcs + client_nslcs))  # all unique nslcs
     for nslc in nslcs:
         if nslc in client_nslcs:
             if nslc in inv_nslcs:
@@ -83,13 +98,14 @@ def _get_shared_nslcs(client_nslcs, inv_nslcs, verbose=True):
         else:
             raise ValueError('{nslc=} not found in Client nor Inventory: '
                              'SHOULD BE IMPOSSIBLE!')
+    assert (len(shared)+len(client_only)+len(inv_only)) == len(nslcs)
     if verbose:
         print(f'Inventory had {len(inv_nslcs)} station-channels')
         print(f'Client had {len(client_nslcs)} station-channels')
-        print(f'{len(shared)} shared station-channels')
+        print(f'{len(shared)} shared station-channels: {shared}')
         print(f'{len(client_only)} client-only station-channels: {client_only}')
         print(f'{len(inv_only)} inventory-only station-channels: {inv_only}')
-    return shared
+    return list(set(shared))
 
 
 def _inv_get_nslc(inv, args):
@@ -166,32 +182,44 @@ def _inv_nslc_date_range(inv, nslc):
 
 
 def _makePPSD(client, inv, nslc, args):
-    max_days = args.maxdays
-    if max_days >= 1:
-        delta = 86400
-    else:
-        delta = int(max_days*86400)
+    max_secs = args.maxdays*86400
+    skip_secs = args.skipdays*86400
 
     ppsd = None
     n, s, l, c = nslc.split('.')
     start_date, end_date = _inv_nslc_date_range(inv, nslc)
-    if end_date - start_date > (args.skipdays+1)*86400:
-        start_date += args.skipdays*86400
-    if end_date-start_date < 86400:
-        start_date
-    data_days = end_date - start_date
-    if max_days is None:
-        max_days = math.ceil(data_days / delta)
-    elif max_days > data_days:
-        print('Reducing max_days ({max_days}) to match {data_days=}')
-        max_days = int(math.ceil(data_days))
+    data_secs = end_date - start_date
+    # Adjust start_date
+    if data_secs > skip_secs + 86400:
+        # If there is at least one day of data after args.skipdays
+        start_date += skip_secs
+    elif data_secs < skip_secs:
+        # If there is less data than the requested skip time
+        print(f"Skip days ({arg.skipdays}) > data days ({data_secs/86400.:.1f})",
+               end='')
+        start_try = end_date - max_secs
+        if start_try < start_date:
+            print(" and max days (args.maxdays) > data days: skipping nothing")
+        else:
+            print(": only skipping {(start_try-start_date)/8600:.1f} days")
+            start_date = start_try
+    
+    delta = 86400 if max_secs >= 86400 else int(max_secs)
+
+    process_secs = end_date - start_date
+    if max_secs is None:
+        max_secs = math.ceil(process_secs)
+    elif max_secs > data_secs:
+        print(f'Reducing max_days ({args.maxdays}) to match data_days ({process_secs/86400:.0f})')
+        max_secs = math.ceil(process_secs)
+    max_days = int(math.ceil(max_secs/86400))
     print(f'Calculating {max_days}-day PPSD for {nslc=}')
-    for day in range(int(math.ceil(max_days))):
+    for day in range(max_days):
         stime = start_date + day*86400.
         etime = stime + delta
         st = client.get_waveforms(n, s, l, c, stime, etime, merge=1)
         if len(st) == 0:
-            return None
+            continue
         elif len(st) > 1:
             print(f'More than one stream ({len(st)}), using first one')
         tr = st[0]
@@ -204,7 +232,7 @@ def _makePPSD(client, inv, nslc, args):
             else:
                 ppsd = PPSD(tr.stats, metadata=inv)
         ppsd.add(tr)
-    return ppsd
+    return ppsd, f"{start_date.strftime('%Y%j')}-{end_date.strftime('%Y%j')}"
 
 
 def _plot_compare_channel(periods, psds, channel, path):
@@ -226,10 +254,6 @@ def _plot_compare_channel(periods, psds, channel, path):
         ax.semilogx(periods, hn, '--')
         ax.set_ylabel('Power Spectral Density (dB ref 1 m/s^2/sqrt(Hz))')
     plt.savefig(f'{path}/{channel}.PSDs.png')
-
-
-def _plot_ppsd(ppsd, nslc, path):
-    ppsd.plot(filename=f'{path}/{nslc}_PPSD.png')
 
 
 if __name__ == '__main__':

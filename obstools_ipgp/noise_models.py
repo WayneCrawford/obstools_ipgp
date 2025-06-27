@@ -190,7 +190,7 @@ def _from_NoiseModel(low_base, high_base, periods, as_freqs):
         highnoise = _fit_points(periods, high_base)
         lownoise = lownoise[::-1]
         highnoise = highnoise[::-1]
-    return lownoise, highnoise
+    return list(lownoise), list(highnoise)
 
 
 def _fit_points(periods, model):
