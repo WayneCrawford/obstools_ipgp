@@ -10,3 +10,9 @@ minor code | changes
            | processing max_days > data_days, added npz and spectrogram outputs
 0.10.post3 | Added basic unittests
 0.11       | Fixed bug in plotPSDs if no match between inventory and data seed_ids
+### v1.1 
+
+Improvements to ``plotPSDs``:
+
+- Fixed data selection bug in plotPSDs
+- Added component-level median PSD comparison

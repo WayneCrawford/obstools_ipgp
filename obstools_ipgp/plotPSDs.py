@@ -15,7 +15,7 @@ MED_PSD_DIR = 'plot_medPSDs'
 PPSD_DIR = 'plot_PPSDs'
 
 
-def main(save_ppsds=True, plot_spectrograms=True):
+def main(save_ppsds=False, plot_spectrograms=False, verbose=True):
 
     args = _parse_input()
 
@@ -31,12 +31,14 @@ def main(save_ppsds=True, plot_spectrograms=True):
         print('there are no shared seed_ids between the data and the inventory. Quitting...')
         return
 
-    psds = {}
+    # Calculate PPSDs for each available NET.STA.LOC.CHAN
+    median_psds, periods = {}, {}
     Path(PPSD_DIR).mkdir(exist_ok=True)
     print('CALCULATING PPSDS')
     for nslc in shared_nslcs:
         ppsd, datestr = _makePPSD(client, inv, nslc, args)
         if ppsd is None:
+            print(f'{ppsd=}, skipping...')
             continue
         ppsd.plot(filename=f'{PPSD_DIR}/{nslc}_{datestr}_PPSD.png')
         if save_ppsds is True:
@@ -44,13 +46,17 @@ def main(save_ppsds=True, plot_spectrograms=True):
         if plot_spectrograms is True:
             ppsd.plot_spectrogram(clim=[ppsd.db_bin_edges[0], ppsd.db_bin_edges[-1]],
                                   filename=f'{PPSD_DIR}/{nslc}_{datestr}_spectrogram.png')
-        periods, psds[nslc] = ppsd.get_mode()
+        periods[nslc], median_psds[nslc] = ppsd.get_percentile(50)
 
+    # For each unique channel name, plot the median PSDs together
     unique_channels = list(set([x.split('.')[3] for x in shared_nslcs]))
+    unique_components = list(set([x.split('.')[3][-1] for x in shared_nslcs]))
     Path(MED_PSD_DIR).mkdir(exist_ok=True)
-    print('CALCULATING median PSDS')
-    for channel in unique_channels:
-        _plot_compare_channel(periods, psds, channel, MED_PSD_DIR)
+    print('PLOTTING median PSDS')
+    for x in unique_channels:
+        _plot_compare_channel(periods, median_psds, x, MED_PSD_DIR, verbose)
+    for x in unique_components:
+        _plot_compare_component(periods, median_psds, x, MED_PSD_DIR, verbose)
 
 
 def _parse_input():
@@ -150,16 +156,18 @@ def _fdsn_to_regex(x):
     return '^' + x + '$'
 
 
-def _inv_nslc_date_range(inv, nslc):
+def _inv_nslc_date_range(inv, nslc, verbose=False):
     n, s, l, c = nslc.split('.')
     nslc_inv = inv.select(network=n, station=s, channel=c, location=l)
     if len(nslc_inv) == 0:
         raise ValueError(f'{nslc=} not found in inventory!')
-    for net in inv:
+    for net in nslc_inv:
         for sta in net:
             for cha in sta:
                 if cha.start_date is not None:
                     start_date = cha.start_date
+                    if verbose:
+                        print(f'{nslc} Channel start_date = {start_date}')
                 elif sta.start_date is not None:
                     print(f'{nslc} Channel start_date not found, returning '
                           'Station start_date')
@@ -170,6 +178,8 @@ def _inv_nslc_date_range(inv, nslc):
                     start_date = net.start_date
                 if cha.end_date is not None:
                     end_date = cha.end_date
+                    if verbose:
+                        print(f'{nslc} Channel end_date = {end_date}')
                 elif sta.end_date is not None:
                     print(f'{nslc} Channel end_date not found, returning '
                           'Station end_date')
@@ -188,14 +198,15 @@ def _makePPSD(client, inv, nslc, args):
     ppsd = None
     n, s, l, c = nslc.split('.')
     start_date, end_date = _inv_nslc_date_range(inv, nslc)
-    data_secs = end_date - start_date
+    print(f'{nslc=}, dates={start_date.isoformat()} - {end_date.isoformat()}')
+    inv_secs = end_date - start_date
     # Adjust start_date
-    if data_secs > skip_secs + 86400:
+    if inv_secs > skip_secs + 86400:
         # If there is at least one day of data after args.skipdays
         start_date += skip_secs
-    elif data_secs < skip_secs:
+    elif inv_secs < skip_secs:
         # If there is less data than the requested skip time
-        print(f"Skip days ({arg.skipdays}) > data days ({data_secs/86400.:.1f})",
+        print(f"    Skip days ({arg.skipdays}) > inv days ({inv_secs/86400.:.1f})",
                end='')
         start_try = end_date - max_secs
         if start_try < start_date:
@@ -209,19 +220,21 @@ def _makePPSD(client, inv, nslc, args):
     process_secs = end_date - start_date
     if max_secs is None:
         max_secs = math.ceil(process_secs)
-    elif max_secs > data_secs:
-        print(f'Reducing max_days ({args.maxdays}) to match data_days ({process_secs/86400:.0f})')
+    elif max_secs > inv_secs:
+        print(f'    Reducing max_days ({args.maxdays}) to match inv_days ({process_secs/86400:.0f})')
         max_secs = math.ceil(process_secs)
     max_days = int(math.ceil(max_secs/86400))
-    print(f'Calculating {max_days}-day PPSD for {nslc=}')
+    print(f'    Calculating {max_days}-day PPSD starting on {start_date.isoformat()} for {nslc=}')
     for day in range(max_days):
         stime = start_date + day*86400.
         etime = stime + delta
         st = client.get_waveforms(n, s, l, c, stime, etime, merge=1)
+        range_text = f'nslc={n}.{s}.{l}.{c}, {stime.isoformat()}-{etime.isoformat()}'
         if len(st) == 0:
+            print(f'    No data found for {range_text}, skipping...')
             continue
         elif len(st) > 1:
-            print(f'More than one stream ({len(st)}), using first one')
+            print(f'    More than one stream ({len(st)}) for {range_text}, using first one')
         tr = st[0]
         if ppsd is None:
             if c[-1] in ('H', 'G', 'O'):
@@ -235,25 +248,69 @@ def _makePPSD(client, inv, nslc, args):
     return ppsd, f"{start_date.strftime('%Y%j')}-{end_date.strftime('%Y%j')}"
 
 
-def _plot_compare_channel(periods, psds, channel, path):
+def _plot_compare_channel(periods, psds, channel, path, verbose=False):
+    """
+    Args:
+        periods (dict of np.array): key=nslc, value = periods
+        psds (np.array):  key=nslc, value = median psd value
+        channel (str): channel name to use
+        path (str or Path): where to write to
+    """
     fig, ax = plt.subplots()
     key_list = list(psds.keys())
+    used_keys = []
     for key in key_list:
         if key.split('.')[3] == channel:
-            ax.semilogx(periods, psds[key], label=key)
+            used_keys.append(key)
+            ax.semilogx(periods[key], psds[key], label=key)
+    if verbose:
+        print(f'{channel=} keys={", ".join(used_keys)}')
     ax.legend(fontsize='xx-small', loc='best')
     ax.set_xlabel('Period(s)')
+    T = periods[key_list[0]]  # Use first PPSD's periods for Peterson models
     if channel[-1] in ('H', 'G', 'O'):
-        ln, hn = PressureNoiseModel(periods)
-        ax.semilogx(periods, ln, '--')
-        ax.semilogx(periods, hn, '--')
+        ln, hn = PressureNoiseModel(T)
+        ax.semilogx(T, ln, '--')
+        ax.semilogx(T, hn, '--')
         ax.set_ylabel('Power Spectral Density (dB ref 1 Pa/sqrt(Hz))')
     else:
-        ln, hn = PetersonNoiseModel(periods)
-        ax.semilogx(periods, ln, '--')
-        ax.semilogx(periods, hn, '--')
+        ln, hn = PetersonNoiseModel(T)
+        ax.semilogx(T, ln, '--')
+        ax.semilogx(T, hn, '--')
         ax.set_ylabel('Power Spectral Density (dB ref 1 m/s^2/sqrt(Hz))')
     plt.savefig(f'{path}/{channel}.PSDs.png')
+
+def _plot_compare_component(periods, psds, component, path, verbose=False):
+    """
+    Args:
+        periods (dict of np.array): key=nslc, value = periods
+        psds (np.array):  key=nslc, value = median psd value
+        component (str): component name to use
+        path (str or Path): where to write to
+    """
+    fig, ax = plt.subplots()
+    key_list = list(psds.keys())
+    used_keys = []
+    for key in key_list:
+        if key.split('.')[3][-1] == component:
+            used_keys.append(key)
+            ax.semilogx(periods[key], psds[key], label=key)
+    if verbose:
+        print(f'{component=} keys={", ".join(used_keys)}')
+    ax.legend(fontsize='xx-small', loc='best')
+    ax.set_xlabel('Period(s)')
+    T = periods[key_list[0]]  # Use first PPSD's periods for Peterson models
+    if component in ('H', 'G', 'O'):
+        ln, hn = PressureNoiseModel(T)
+        ax.semilogx(T, ln, '--')
+        ax.semilogx(T, hn, '--')
+        ax.set_ylabel('Power Spectral Density (dB ref 1 Pa/sqrt(Hz))')
+    else:
+        ln, hn = PetersonNoiseModel(T)
+        ax.semilogx(T, ln, '--')
+        ax.semilogx(T, hn, '--')
+        ax.set_ylabel('Power Spectral Density (dB ref 1 m/s^2/sqrt(Hz))')
+    plt.savefig(f'{path}/{component}.PSDs.png')
 
 
 if __name__ == '__main__':
